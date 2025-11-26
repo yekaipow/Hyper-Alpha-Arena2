@@ -316,7 +316,62 @@ def on_startup():
 
     finally:
         db.close()
-    
+
+    # ============================================================
+    # Upgrade: Initialize Hyperliquid trading mode config & fix NULL environment data
+    # ============================================================
+    # This ensures:
+    # 1. New installations have hyperliquid_trading_mode config initialized
+    # 2. Existing installations with NULL ai_decision_logs.hyperliquid_environment get fixed
+    # 3. Fixes ModelChat empty data issue for GitHub users
+    # ============================================================
+    db = SessionLocal()
+    try:
+        # Step 1: Initialize hyperliquid_trading_mode config if missing
+        config = db.query(SystemConfig).filter(
+            SystemConfig.key == "hyperliquid_trading_mode"
+        ).first()
+
+        if not config:
+            config = SystemConfig(
+                key="hyperliquid_trading_mode",
+                value="testnet",
+                description="Global Hyperliquid trading environment: 'testnet' or 'mainnet'. Controls which network all AI Traders connect to."
+            )
+            db.add(config)
+            db.commit()
+            print("✓ [Upgrade] Initialized global hyperliquid_trading_mode to 'testnet'")
+        else:
+            print(f"✓ [Upgrade] Global hyperliquid_trading_mode already configured: {config.value}")
+
+        # Step 2: One-time migration - fix NULL hyperliquid_environment in ai_decision_logs
+        # Check if there are any NULL records
+        null_count = db.execute(text("""
+            SELECT COUNT(*) FROM ai_decision_logs WHERE hyperliquid_environment IS NULL
+        """)).scalar()
+
+        if null_count > 0:
+            print(f"⚠ [Upgrade] Found {null_count} ai_decision_logs with NULL hyperliquid_environment, fixing...")
+
+            # Update all NULL records to 'testnet' (safe default)
+            updated = db.execute(text("""
+                UPDATE ai_decision_logs
+                SET hyperliquid_environment = 'testnet'
+                WHERE hyperliquid_environment IS NULL
+            """))
+            db.commit()
+
+            print(f"✓ [Upgrade] Updated {null_count} records from NULL to 'testnet' (ModelChat fix)")
+        else:
+            print("✓ [Upgrade] No NULL hyperliquid_environment records found, data is clean")
+
+    except Exception as e:
+        db.rollback()
+        print(f"✗ [Upgrade] Hyperliquid environment upgrade failed: {e}")
+        # Non-fatal - continue startup
+    finally:
+        db.close()
+
     # Ensure prompt templates exist
     db = SessionLocal()
     try:
