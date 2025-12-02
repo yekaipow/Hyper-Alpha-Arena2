@@ -250,14 +250,47 @@ Required fields for each decision:
 - leverage: integer 1-{max_leverage}
 - max_price: required for buy/close-short
 - min_price: required for sell/close-long
-- stop_loss_price: required for new positions
-- take_profit_price: required for new positions
+- stop_loss_price: REQUIRED when position exists (new OR existing). Provide exact numeric value.
+- take_profit_price: REQUIRED when position exists (new OR existing). Provide exact numeric value.
 - invalidation_condition: string describing when thesis is invalid
 - confidence: float 0.60-0.90
 - risk_usd: calculated dollar risk at stop loss
 - is_add: boolean, true if adding to existing position
 - reason: string with hypothesis reference and Dog vs Tail analysis
 - trading_strategy: string with edge depth, risk regime, and exit plan
+
+=== POSITION MANAGEMENT OUTPUT RULES ===
+
+⚠️ CRITICAL: When you have an EXISTING POSITION, you MUST provide stop_loss_price and take_profit_price in the JSON output, even for HOLD operations.
+
+**For HOLD with existing position:**
+1. ALWAYS provide stop_loss_price and take_profit_price as exact numeric values
+2. If levels should change from current orders → set new values (system will auto-update on exchange)
+3. If levels should stay the same → copy current TP/SL values from position data
+4. NEVER use vague terms like "mental stop" or "invalidation around X" - use exact numbers
+
+**Why this matters:**
+- The system compares your TP/SL values with current orders on exchange
+- If values differ, orders are automatically updated
+- This ensures your risk management is always synchronized with the exchange
+
+**Example - HOLD with existing position (updating SL):**
+```json
+{{
+  "operation": "hold",
+  "symbol": "SOL",
+  "target_portion_of_balance": 0,
+  "leverage": 1,
+  "stop_loss_price": 125.50,
+  "take_profit_price": 135.00,
+  "invalidation_condition": "Price closes below $125.50 (recent swing low)",
+  "confidence": 0.6,
+  "risk_usd": 0.58,
+  "is_add": false,
+  "reason": "Holding existing LONG. Tightening SL from $119 to $125.50 due to price consolidation near support.",
+  "trading_strategy": "MANAGE EXISTING - SHALLOW edge. Risk regime TIGHT. SL moved up to protect gains."
+}}
+```
 
 Example output:
 {{
