@@ -1166,36 +1166,24 @@ async def approve_builder_fee(
         if not account:
             raise HTTPException(status_code=404, detail=f"Account {account_id} not found")
 
-        # Verify it's a Hyperliquid account - check both old and new architecture
-        hyperliquid_environment = getattr(account, "hyperliquid_environment", None)
+        # Check if account has mainnet wallet configured (new architecture first, then fallback)
+        mainnet_wallet = db.query(HyperliquidWallet).filter(
+            HyperliquidWallet.account_id == account_id,
+            HyperliquidWallet.environment == "mainnet",
+            HyperliquidWallet.private_key_encrypted.isnot(None)
+        ).first()
 
-        # If not set in accounts table, check hyperliquid_wallets table for mainnet wallet
-        if hyperliquid_environment not in ["testnet", "mainnet"]:
-            mainnet_wallet = db.query(HyperliquidWallet).filter(
-                HyperliquidWallet.account_id == account_id,
-                HyperliquidWallet.environment == "mainnet",
-                HyperliquidWallet.private_key_encrypted.isnot(None)
-            ).first()
-            if mainnet_wallet:
-                hyperliquid_environment = "mainnet"
-            else:
-                # Also check for testnet wallet
-                testnet_wallet = db.query(HyperliquidWallet).filter(
-                    HyperliquidWallet.account_id == account_id,
-                    HyperliquidWallet.environment == "testnet",
-                    HyperliquidWallet.private_key_encrypted.isnot(None)
-                ).first()
-                if testnet_wallet:
-                    hyperliquid_environment = "testnet"
+        # Fallback to old architecture
+        if not mainnet_wallet:
+            mainnet_key = getattr(account, "hyperliquid_mainnet_private_key", None)
+            if not mainnet_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Account does not have a mainnet wallet configured"
+                )
 
-        if hyperliquid_environment not in ["testnet", "mainnet"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Account is not configured for Hyperliquid trading"
-            )
-
-        # Get Hyperliquid client (which has access to the exchange SDK)
-        client = get_hyperliquid_client(db, account_id)
+        # Get Hyperliquid client with mainnet environment (regardless of current trading mode)
+        client = get_hyperliquid_client(db, account_id, override_environment="mainnet")
 
         # Calculate fee percentage for display (e.g., 30 -> "0.03%")
         fee_bps = HYPERLIQUID_BUILDER_CONFIG.builder_fee / 10  # Convert to basis points
