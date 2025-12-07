@@ -128,7 +128,7 @@ export default function AuthorizationModal({
             </Button>
           </div>
           <p className="text-sm text-muted-foreground mt-2">
-            This authorization is only for platform trading and does not involve withdrawals or other sensitive operations.
+            A service fee (only 0.03%) per trade supports long-term project development and maintenance. Subscribe to Premium for 50% off.
           </p>
         </div>
 

@@ -248,19 +248,44 @@ class HyperliquidTradingClient:
         Only returns builder params for mainnet environment to avoid
         unnecessary fees on testnet trading.
 
+        Fee rates:
+        - Premium users: 15 (0.015%)
+        - Non-premium users: 30 (0.03%)
+
         Returns:
             Dict with builder address and fee rate for mainnet, None for testnet
-            Format: {"b": "0x...", "f": 30} or None
+            Format: {"b": "0x...", "f": 15 or 30} or None
         """
         # Only apply builder fee on mainnet, not on testnet
         if self.environment != "mainnet":
             return None
 
         from config.settings import HYPERLIQUID_BUILDER_CONFIG
+        from database.models import User, UserSubscription
+
+        # Determine fee based on current logged-in user's subscription status
+        # Query non-default user's subscription (the current logged-in user)
+        builder_fee = HYPERLIQUID_BUILDER_CONFIG.builder_fee  # Default: 30
+
+        try:
+            db = SessionLocal()
+            subscription = db.query(UserSubscription).join(User).filter(
+                User.username != 'default',
+                UserSubscription.subscription_type == 'premium'
+            ).first()
+            if subscription:
+                builder_fee = 15  # Premium rate: 0.015%
+                user = db.query(User).filter(User.id == subscription.user_id).first()
+                logger.info(f"[BUILDER FEE] Premium user '{user.username if user else 'unknown'}' detected, using reduced fee: 0.015%")
+            else:
+                logger.info(f"[BUILDER FEE] No premium user logged in, using default fee: 0.03%")
+            db.close()
+        except Exception as e:
+            logger.warning(f"[BUILDER FEE] Failed to check subscription status: {e}, using default fee")
 
         return {
             "b": HYPERLIQUID_BUILDER_CONFIG.builder_address,
-            "f": HYPERLIQUID_BUILDER_CONFIG.builder_fee
+            "f": builder_fee
         }
 
     def _record_exchange_action(

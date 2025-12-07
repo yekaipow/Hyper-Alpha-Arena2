@@ -237,22 +237,30 @@ async def sync_membership_info(
     This endpoint is called by frontend after successfully fetching membership
     info from www.akooi.com/api/membership/me. It updates the local UserSubscription
     table to keep it in sync, preventing accidental usage of stale local data.
+
+    Important: This clears all non-default user subscriptions before updating,
+    ensuring only the current logged-in user's subscription is active.
     """
     try:
-        # Find or create user
+        # Step 1: Delete all subscriptions for non-default users
+        non_default_users = db.query(User).filter(User.username != "default").all()
+        for u in non_default_users:
+            db.query(UserSubscription).filter(UserSubscription.user_id == u.id).delete()
+        logger.info(f"Cleared subscriptions for {len(non_default_users)} non-default users")
+
+        # Step 2: Find or create user
         user = db.query(User).filter(User.username == sync_data.username).first()
         if not user:
-            # Create user if doesn't exist
             user = User(
                 username=sync_data.username,
                 email=f"{sync_data.username}@external.user",
                 is_active="true"
             )
             db.add(user)
-            db.flush()  # Get user.id
+            db.flush()
             logger.info(f"Created new user: {sync_data.username} (ID: {user.id})")
 
-        # Determine subscription type based on status
+        # Step 3: Determine subscription type based on status
         subscription_type = "premium" if sync_data.status == "ACTIVE" else "free"
 
         # Parse expiry date if provided
@@ -263,27 +271,15 @@ async def sync_membership_info(
             except Exception as e:
                 logger.warning(f"Failed to parse expiry date: {e}")
 
-        # Find or create subscription
-        subscription = db.query(UserSubscription).filter(
-            UserSubscription.user_id == user.id
-        ).first()
-
-        if subscription:
-            # Update existing subscription
-            subscription.subscription_type = subscription_type
-            subscription.expires_at = expires_at
-            subscription.max_sampling_depth = 60 if subscription_type == "premium" else 10
-            logger.info(f"Updated subscription for user {sync_data.username}: {subscription_type}")
-        else:
-            # Create new subscription
-            subscription = UserSubscription(
-                user_id=user.id,
-                subscription_type=subscription_type,
-                expires_at=expires_at,
-                max_sampling_depth=60 if subscription_type == "premium" else 10
-            )
-            db.add(subscription)
-            logger.info(f"Created subscription for user {sync_data.username}: {subscription_type}")
+        # Step 4: Create subscription for current user
+        subscription = UserSubscription(
+            user_id=user.id,
+            subscription_type=subscription_type,
+            expires_at=expires_at,
+            max_sampling_depth=60 if subscription_type == "premium" else 10
+        )
+        db.add(subscription)
+        logger.info(f"Created subscription for user {sync_data.username}: {subscription_type}")
 
         db.commit()
 

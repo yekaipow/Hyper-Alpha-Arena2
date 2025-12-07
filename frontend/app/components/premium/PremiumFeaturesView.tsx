@@ -12,7 +12,8 @@ import {
   Lock,
   ExternalLink,
   Info,
-  Sparkles
+  Sparkles,
+  Percent
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/contexts/AuthContext'
@@ -214,14 +215,68 @@ export default function PremiumFeaturesView({ onAccountUpdated, onPageChange }: 
       {/* Features Container with scroll */}
       <div className="flex-1 overflow-y-auto p-6">
         <div className="space-y-8">
-          {/* Data Collection Section */}
+          {/* Trading Improvement Section */}
           <section className="space-y-4">
             <div className="flex items-center gap-2">
               <Database className="w-5 h-5 text-primary" />
-              <h2 className="text-xl font-semibold">Data Collection</h2>
+              <h2 className="text-xl font-semibold">Trading Improvement</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Service Fee Card */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="space-y-1">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Percent className="w-5 h-5 text-blue-500" />
+                      Service Fee
+                      {isPremium && (
+                        <Badge className="bg-green-500 text-white text-xs">50% Off</Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      A small fee per trade supports long-term project development and maintenance
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="h-[200px] p-3 bg-muted/50 rounded-lg text-xs flex flex-col items-center justify-center">
+                    <div className="font-medium flex items-center gap-2 mb-4">
+                      <Info className="w-4 h-4" />
+                      Current Rate
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-foreground mb-2">
+                        {isPremium ? (
+                          <>
+                            <span className="line-through text-muted-foreground text-xl mr-2">0.03%</span>
+                            0.015%
+                          </>
+                        ) : (
+                          '0.03%'
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground mb-2">per trade</div>
+                      {isPremium ? (
+                        <div className="text-green-600 font-medium">Premium discount applied</div>
+                      ) : (
+                        <div className="text-muted-foreground">Standard rate for non-subscribers</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {!isPremium && (
+                    <Button
+                      onClick={handleUpgradeClick}
+                      className="w-full h-8 text-xs"
+                    >
+                      Subscribe for 50% Off
+                      <ExternalLink className="w-3 h-3 ml-1" />
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader className="pb-3">
                   <div className="space-y-1">
