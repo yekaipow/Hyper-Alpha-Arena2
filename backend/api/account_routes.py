@@ -802,9 +802,10 @@ async def test_llm_connection(payload: dict):
                 # Regular models (GPT-4, Deepseek, Claude, etc.)
                 payload_data["max_tokens"] = 2000
 
-            # For GPT-5 series, set reasoning_effort to minimal for faster test
+            # For GPT-5 series, set reasoning_effort to low for faster test
+            # Valid values: none, low, medium, high (NOT minimal)
             if 'gpt-5' in model_lower:
-                payload_data["reasoning_effort"] = "minimal"
+                payload_data["reasoning_effort"] = "low"
 
             endpoints = build_chat_completion_endpoints(base_url, model)
             if not endpoints:
