@@ -321,8 +321,16 @@ def backtest_signal(
     """
     from services.signal_backtest_service import signal_backtest_service
 
-    result = signal_backtest_service.backtest_signal(db, signal_id, symbol, kline_min_ts, kline_max_ts)
-    return result
+    try:
+        result = signal_backtest_service.backtest_signal(db, signal_id, symbol, kline_min_ts, kline_max_ts)
+        return result
+    except Exception as e:
+        logger.error(
+            f"[Backtest API] EXCEPTION: signal_id={signal_id}, symbol={symbol}, "
+            f"ts_range=[{kline_min_ts}, {kline_max_ts}], error={e}",
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
 
 
 from pydantic import BaseModel, Field
@@ -350,14 +358,22 @@ def backtest_preview(
     """
     from services.signal_backtest_service import signal_backtest_service
 
-    result = signal_backtest_service.backtest_temp_signal(
-        db=db,
-        symbol=request.symbol,
-        trigger_condition=request.trigger_condition,
-        kline_min_ts=request.kline_min_ts,
-        kline_max_ts=request.kline_max_ts
-    )
-    return result
+    try:
+        result = signal_backtest_service.backtest_temp_signal(
+            db=db,
+            symbol=request.symbol,
+            trigger_condition=request.trigger_condition,
+            kline_min_ts=request.kline_min_ts,
+            kline_max_ts=request.kline_max_ts
+        )
+        return result
+    except Exception as e:
+        logger.error(
+            f"[Backtest API] EXCEPTION in preview: symbol={request.symbol}, "
+            f"condition={request.trigger_condition}, error={e}",
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Backtest preview failed: {str(e)}")
 
 
 @router.get("/pool-backtest/{pool_id}")
@@ -374,8 +390,16 @@ def backtest_pool(
     """
     from services.signal_backtest_service import signal_backtest_service
 
-    result = signal_backtest_service.backtest_pool(db, pool_id, symbol, kline_min_ts, kline_max_ts)
-    return result
+    try:
+        result = signal_backtest_service.backtest_pool(db, pool_id, symbol, kline_min_ts, kline_max_ts)
+        return result
+    except Exception as e:
+        logger.error(
+            f"[Backtest API] EXCEPTION in pool: pool_id={pool_id}, symbol={symbol}, "
+            f"ts_range=[{kline_min_ts}, {kline_max_ts}], error={e}",
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Pool backtest failed: {str(e)}")
 
 
 # ============ Trigger Logs ============

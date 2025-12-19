@@ -5,12 +5,20 @@ Backtests signals against historical data to show where triggers would occur.
 """
 
 import logging
+import sys
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+# Configure logger to output to stdout for debugging
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.WARNING)
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
 
 # Timeframe to milliseconds mapping
 TIMEFRAME_MS = {
@@ -50,6 +58,9 @@ class SignalBacktestService:
             kline_min_ts: Minimum K-line timestamp in milliseconds (for filtering triggers)
             kline_max_ts: Maximum K-line timestamp in milliseconds (for filtering triggers)
         """
+        logger.warning(f"[Backtest] START signal_id={signal_id} symbol={symbol} "
+                       f"ts_range=[{kline_min_ts}, {kline_max_ts}]")
+
         # Clear bucket cache for fresh data
         self._bucket_cache = {}
 
@@ -63,6 +74,7 @@ class SignalBacktestService:
         )
         row = result.fetchone()
         if not row:
+            logger.warning(f"[Backtest] Signal {signal_id} NOT FOUND in database")
             return {"error": "Signal not found"}
 
         signal_def = {
@@ -77,7 +89,11 @@ class SignalBacktestService:
         metric = condition.get("metric")
         time_window = condition.get("time_window", "5m")
 
+        logger.warning(f"[Backtest] Signal found: name={signal_def['signal_name']}, "
+                       f"metric={metric}, time_window={time_window}, condition={condition}")
+
         if not metric:
+            logger.warning(f"[Backtest] Signal {signal_id} has no metric configured")
             return {"error": "Signal has no metric configured"}
 
         # Find triggers within the specified time range
@@ -85,6 +101,7 @@ class SignalBacktestService:
             db, signal_def, symbol, time_window, kline_min_ts, kline_max_ts
         )
 
+        logger.warning(f"[Backtest] END signal_id={signal_id} success, {len(triggers)} triggers found")
         return {
             "signal_id": signal_id,
             "signal_name": signal_def["signal_name"],
@@ -168,13 +185,19 @@ class SignalBacktestService:
         operator = condition.get("operator")
         threshold = condition.get("threshold")
 
+        logger.warning(f"[Backtest] _find_triggers_in_range: symbol={symbol}, metric={metric}, "
+                       f"operator={operator}, threshold={threshold}, time_window={time_window}")
+
         # Handle taker_volume composite signal
         if metric == "taker_volume":
+            logger.warning(f"[Backtest] Using taker_volume composite signal handler")
             return self._find_taker_triggers_in_range(
                 db, signal_def, symbol, time_window, kline_min_ts, kline_max_ts
             )
 
         if not all([metric, operator, threshold is not None]):
+            logger.warning(f"[Backtest] Missing required fields: metric={metric}, "
+                           f"operator={operator}, threshold={threshold}")
             return []
 
         # Map metric names for backward compatibility
@@ -183,7 +206,10 @@ class SignalBacktestService:
             "funding_rate": "funding",
             "taker_buy_ratio": "taker_ratio",
         }
-        metric = metric_map.get(metric, metric)
+        mapped_metric = metric_map.get(metric, metric)
+        if mapped_metric != metric:
+            logger.warning(f"[Backtest] Metric mapped: {metric} -> {mapped_metric}")
+        metric = mapped_metric
 
         interval_ms = TIMEFRAME_MS.get(time_window, 300000)
         check_interval_ms = 15000  # 15 seconds, matching data granularity
@@ -193,7 +219,10 @@ class SignalBacktestService:
             db, symbol, metric, kline_min_ts, kline_max_ts, interval_ms
         )
         if not raw_data:
+            logger.warning(f"[Backtest] NO DATA returned from _load_raw_data_for_metric "
+                           f"for {symbol}/{metric}")
             return []
+        logger.warning(f"[Backtest] Loaded {len(raw_data)} raw data points for {symbol}/{metric}")
 
         # Generate check points every 15 seconds
         check_points = self._generate_check_points(
@@ -848,6 +877,9 @@ class SignalBacktestService:
         For AND logic: evaluates all signals at each check point with pool-level edge detection.
         For OR logic: combines individual signal triggers.
         """
+        logger.warning(f"[Backtest] START pool_id={pool_id} symbol={symbol} "
+                       f"ts_range=[{kline_min_ts}, {kline_max_ts}]")
+
         self._bucket_cache = {}
 
         # Get pool definition
@@ -860,6 +892,7 @@ class SignalBacktestService:
         )
         row = result.fetchone()
         if not row:
+            logger.warning(f"[Backtest] Pool {pool_id} NOT FOUND in database")
             return {"error": "Pool not found"}
 
         pool_def = {
@@ -872,7 +905,11 @@ class SignalBacktestService:
         }
 
         signal_ids = pool_def["signal_ids"]
+        logger.warning(f"[Backtest] Pool found: name={pool_def['pool_name']}, "
+                       f"logic={pool_def['logic']}, signal_ids={signal_ids}")
+
         if not signal_ids:
+            logger.warning(f"[Backtest] Pool {pool_id} has no signals configured")
             return {"error": "Pool has no signals configured"}
 
         logic = pool_def["logic"]
@@ -906,6 +943,7 @@ class SignalBacktestService:
             signal_triggers, signal_names, logic
         )
 
+        logger.warning(f"[Backtest] END pool_id={pool_id} success, {len(combined_triggers)} combined triggers")
         return {
             "pool_id": pool_id,
             "pool_name": pool_def["pool_name"],
@@ -1176,11 +1214,18 @@ class SignalBacktestService:
         """
         from database.models import MarketTradesAggregated, MarketAssetMetrics, MarketOrderbookSnapshots
 
+        logger.warning(f"[Backtest] _load_raw_data_for_metric: symbol={symbol}, metric={metric}, "
+                       f"ts_range=[{kline_min_ts}, {kline_max_ts}], interval_ms={interval_ms}")
+
         # Extend range to include lookback period for first check point
         lookback_ms = interval_ms * 10
         start_time = (kline_min_ts - lookback_ms) if kline_min_ts else None
 
+        result = []
+        table_name = "unknown"
+
         if metric in ("cvd", "taker_ratio"):
+            table_name = "market_trades_aggregated"
             query = db.query(
                 MarketTradesAggregated.timestamp,
                 MarketTradesAggregated.taker_buy_notional,
@@ -1190,9 +1235,10 @@ class SignalBacktestService:
                 query = query.filter(MarketTradesAggregated.timestamp >= start_time)
             if kline_max_ts:
                 query = query.filter(MarketTradesAggregated.timestamp <= kline_max_ts)
-            return query.order_by(MarketTradesAggregated.timestamp).all()
+            result = query.order_by(MarketTradesAggregated.timestamp).all()
 
         elif metric == "oi_delta":
+            table_name = "market_asset_metrics"
             query = db.query(
                 MarketAssetMetrics.timestamp,
                 MarketAssetMetrics.open_interest
@@ -1201,9 +1247,10 @@ class SignalBacktestService:
                 query = query.filter(MarketAssetMetrics.timestamp >= start_time)
             if kline_max_ts:
                 query = query.filter(MarketAssetMetrics.timestamp <= kline_max_ts)
-            return query.order_by(MarketAssetMetrics.timestamp).all()
+            result = query.order_by(MarketAssetMetrics.timestamp).all()
 
         elif metric in ("order_imbalance", "depth_ratio"):
+            table_name = "market_orderbook_snapshots"
             query = db.query(
                 MarketOrderbookSnapshots.timestamp,
                 MarketOrderbookSnapshots.bid_depth_5,
@@ -1213,9 +1260,19 @@ class SignalBacktestService:
                 query = query.filter(MarketOrderbookSnapshots.timestamp >= start_time)
             if kline_max_ts:
                 query = query.filter(MarketOrderbookSnapshots.timestamp <= kline_max_ts)
-            return query.order_by(MarketOrderbookSnapshots.timestamp).all()
+            result = query.order_by(MarketOrderbookSnapshots.timestamp).all()
 
-        return []
+        else:
+            logger.warning(f"[Backtest] UNKNOWN metric: {metric}, returning empty data")
+            return []
+
+        if len(result) == 0:
+            logger.warning(f"[Backtest] NO DATA in {table_name} for symbol={symbol.upper()}, "
+                           f"metric={metric}, ts_range=[{start_time}, {kline_max_ts}]")
+        else:
+            logger.warning(f"[Backtest] Loaded {len(result)} rows from {table_name} for {symbol}/{metric}")
+
+        return result
 
     def _generate_check_points(
         self, raw_data: List[tuple], kline_min_ts: int, kline_max_ts: int, check_interval_ms: int
