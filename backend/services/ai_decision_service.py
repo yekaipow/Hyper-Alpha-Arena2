@@ -976,7 +976,7 @@ Regime Types:
                     return f"[{symbol}/{tf}] {regime} ({direction}) conf={conf:.2f} | insufficient data"
                 return (
                     f"[{symbol}/{tf}] {regime} ({direction}) conf={conf:.2f} | "
-                    f"cvd_ratio={ind.get('cvd_z', 0):.3f}, oi_delta={ind.get('oi_z', 0):.2f}%, "
+                    f"cvd_ratio={ind.get('cvd_ratio', 0):.3f}, oi_delta={ind.get('oi_delta', 0):.3f}%, "
                     f"taker={ind.get('taker_ratio', 1):.2f}, rsi={ind.get('rsi', 50):.1f}"
                 )
 
