@@ -814,6 +814,9 @@ def get_trade_details(
     # Apply pagination
     paginated = all_decisions[offset:offset + limit]
 
+    # Open snapshot_db for HyperliquidTrade queries
+    snapshot_db = SnapshotSessionLocal()
+
     # Build response
     trades = []
     for d in paginated:
@@ -826,11 +829,22 @@ def get_trade_details(
         if entry_decision and entry_decision.decision_time:
             entry_time = entry_decision.decision_time.isoformat()
 
-        # Determine exit time: use pnl_updated_at for TP/SL triggers, otherwise decision_time
+        # Determine exit time for TP/SL: use HyperliquidTrade.trade_time (authoritative source)
         exit_type = get_exit_type(d)
-        if exit_type in ('TP', 'SL') and d.pnl_updated_at:
-            exit_time = d.pnl_updated_at.isoformat()
-        else:
+        exit_time = None
+        if exit_type in ('TP', 'SL'):
+            # Get actual trigger time from HyperliquidTrade
+            tp_sl_order_id = d.tp_order_id or d.sl_order_id
+            if tp_sl_order_id:
+                hl_trade = snapshot_db.query(HyperliquidTrade).filter(
+                    HyperliquidTrade.order_id == str(tp_sl_order_id)
+                ).first()
+                if hl_trade and hl_trade.trade_time:
+                    exit_time = hl_trade.trade_time.isoformat()
+            # Fallback to pnl_updated_at if HyperliquidTrade not found
+            if not exit_time and d.pnl_updated_at:
+                exit_time = d.pnl_updated_at.isoformat()
+        if not exit_time:
             exit_time = d.decision_time.isoformat() if d.decision_time else None
 
         trades.append({
@@ -849,6 +863,9 @@ def get_trade_details(
             "tp_order_id": d.tp_order_id,
             "sl_order_id": d.sl_order_id,
         })
+
+    # Close snapshot_db
+    snapshot_db.close()
 
     return {
         "trades": trades,
