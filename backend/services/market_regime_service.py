@@ -264,7 +264,7 @@ def calculate_direction(cvd_ratio: float, taker_log_ratio: float, price_atr: flo
 def calculate_confidence(
     cvd_ratio: float, taker_log_ratio: float, oi_delta: float, price_atr: float
 ) -> float:
-    """Calculate confidence score (0-1) based on signal strength"""
+    """Calculate base confidence score (0-1) based on signal strength"""
     # Normalize each indicator to 0-1 range
     # cvd_ratio: typical range -0.5 to 0.5, cap at 0.3
     # taker_log_ratio: typical range -1 to 1 (log scale)
@@ -277,6 +277,100 @@ def calculate_confidence(
         0.3 * min(abs(price_atr), 2.0) / 2.0
     )
     return max(0.0, min(1.0, score))
+
+
+def calculate_pattern_penalty(
+    regime: str,
+    cvd_ratio: float,
+    price_atr: float,
+    oi_delta: float,
+    rsi: float,
+    price_range_atr: float
+) -> float:
+    """
+    Calculate pattern penalty based on regime-specific feature matching.
+    Returns multiplier 0.70-1.0 (1.0 = no penalty, <1.0 = penalty for mismatch).
+    """
+    score = 1.0
+
+    cvd_weak = abs(cvd_ratio) < 0.03
+    price_strong = abs(price_atr) > 0.5
+    rsi_extreme = rsi > 70 or rsi < 30
+    range_large = price_range_atr > 1.0
+    body_ratio = abs(price_atr) / price_range_atr if price_range_atr > 0 else 1.0
+    cvd_price_aligned = (cvd_ratio > 0 and price_atr > 0) or (cvd_ratio < 0 and price_atr < 0)
+
+    if regime == REGIME_BREAKOUT:
+        if not cvd_price_aligned:
+            score -= 0.12  # CVD and price should be aligned for breakout
+        if cvd_weak:
+            score -= 0.08  # CVD should be strong for breakout
+
+    elif regime == REGIME_ABSORPTION:
+        if price_strong:
+            score -= 0.10  # Price should be weak for absorption
+        if cvd_weak:
+            score -= 0.08  # CVD should be strong for absorption
+
+    elif regime == REGIME_CONTINUATION:
+        if not cvd_price_aligned:
+            score -= 0.15  # CVD and price must be aligned for continuation
+
+    elif regime == REGIME_EXHAUSTION:
+        if not rsi_extreme:
+            score -= 0.10  # RSI should be extreme for exhaustion
+
+    elif regime == REGIME_TRAP:
+        if cvd_price_aligned:
+            score -= 0.12  # Trap should have CVD/price divergence
+
+    elif regime == REGIME_STOP_HUNT:
+        if not range_large:
+            score -= 0.10  # Stop hunt needs large range
+        if body_ratio > 0.5:
+            score -= 0.08  # Stop hunt should have small body (reversal)
+
+    elif regime == REGIME_NOISE:
+        score -= 0.15  # Noise regime gets penalty
+
+    return max(0.70, score)
+
+
+def calculate_direction_penalty(
+    regime: str,
+    cvd_ratio: float,
+    price_atr: float,
+    taker_log_ratio: float
+) -> float:
+    """
+    Calculate direction penalty based on CVD/Price/Taker alignment.
+    Returns multiplier 0.85-1.0 (1.0 = no penalty, <1.0 = penalty for mismatch).
+    """
+    cvd_dir = 1 if cvd_ratio > 0.02 else (-1 if cvd_ratio < -0.02 else 0)
+    price_dir = 1 if price_atr > 0.1 else (-1 if price_atr < -0.1 else 0)
+    taker_dir = 1 if taker_log_ratio > 0.15 else (-1 if taker_log_ratio < -0.15 else 0)
+
+    dirs = [d for d in [cvd_dir, price_dir, taker_dir] if d != 0]
+    if len(dirs) < 2:
+        return 1.0  # Insufficient data, no penalty
+
+    all_aligned = all(d == dirs[0] for d in dirs)
+    has_contradiction = (1 in dirs and -1 in dirs)
+
+    # Breakout/Continuation: should have aligned directions
+    if regime in [REGIME_BREAKOUT, REGIME_CONTINUATION]:
+        if has_contradiction:
+            return 0.85  # -15% penalty for direction contradiction
+
+    # Absorption/Trap: expect divergence, penalize if all aligned
+    elif regime in [REGIME_ABSORPTION, REGIME_TRAP]:
+        if all_aligned:
+            return 0.88  # -12% penalty for unexpected alignment
+
+    elif regime == REGIME_NOISE:
+        return 0.90  # -10% penalty for noise
+
+    return 1.0
 
 
 def classify_regime(
@@ -565,7 +659,16 @@ def get_market_regime(
 
     # Calculate direction and confidence
     direction = calculate_direction(cvd_ratio, taker_log_ratio, price_atr)
-    confidence = calculate_confidence(cvd_ratio, taker_log_ratio, oi_delta, price_atr)
+    base_confidence = calculate_confidence(cvd_ratio, taker_log_ratio, oi_delta, price_atr)
+
+    # Apply penalty multipliers for regime-specific quality assessment
+    pattern_penalty = calculate_pattern_penalty(
+        regime, cvd_ratio, price_atr, oi_delta, rsi, price_range_atr
+    )
+    direction_penalty = calculate_direction_penalty(
+        regime, cvd_ratio, price_atr, taker_log_ratio
+    )
+    confidence = base_confidence * pattern_penalty * direction_penalty
 
     return {
         "regime": regime,
