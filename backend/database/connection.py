@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
-
+logger.info("\n开始处理 *connection.py 文件\n")
 # Prefer explicit env override; default to service name for containerized deployment
 # Default to docker-compose service name; override via env when needed
 DATABASE_URL = os.environ.get('DATABASE_URL')

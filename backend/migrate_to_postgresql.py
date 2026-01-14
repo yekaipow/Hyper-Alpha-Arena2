@@ -5,7 +5,7 @@ Migrate data from SQLite to PostgreSQL
 import sqlite3
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-
+logger.info("\n开始处理 migrate_to_postgresql.py 文件\n")
 # SQLite connection
 sqlite_conn = sqlite3.connect('data.db')
 sqlite_conn.row_factory = sqlite3.Row

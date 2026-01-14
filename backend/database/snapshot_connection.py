@@ -8,7 +8,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import OperationalError
 import os
 import logging
-
+logger.info("\n开始处理 *snapshot_connection.py 文件\n")
 logger = logging.getLogger(__name__)
 # Snapshot database URL from environment or default
 SNAPSHOT_DATABASE_URL = os.environ.get('SNAPSHOT_DATABASE_URL')
