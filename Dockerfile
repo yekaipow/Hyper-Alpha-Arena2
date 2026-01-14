@@ -3,7 +3,6 @@
 # ============================
 FROM node:18-alpine AS frontend-builder
 
-# Build frontend
 WORKDIR /app/frontend
 COPY frontend/package.json ./
 RUN npm install -g pnpm && pnpm install
@@ -12,17 +11,22 @@ RUN pnpm build
 
 
 # ============================
-# Python Backend Stage
+# Backend + PostgreSQL Stage
 # ============================
 FROM python:3.12-slim
 
-# Install system dependencies including PostgreSQL server and client
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    sudo \
     postgresql \
     postgresql-contrib \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
+
+# Create postgres user home
+RUN mkdir -p /var/lib/postgresql && \
+    chown -R postgres:postgres /var/lib/postgresql
 
 # Create app directory
 WORKDIR /app
@@ -46,59 +50,68 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 
 # ============================
-# PostgreSQL Check Script
+# PostgreSQL Startup Script
 # ============================
 COPY --chmod=755 <<'EOF' /app/check_postgres.sh
 #!/bin/bash
 
-# Function to start PostgreSQL service
+DATA_DIR="/var/lib/postgresql/data"
+
 start_postgresql() {
-    echo "Starting local PostgreSQL service..."
-}
+    echo "启动本地 PostgreSQL..."
 
-# Check if external PostgreSQL is available
-check_external_postgresql() {
-    if [ -n "$POSTGRES_HOST" ] && [ -n "$POSTGRES_PORT" ]; then
-        echo "检查外部 PostgreSQL 连接: $POSTGRES_HOST:$POSTGRES_PORT..."
-        timeout 10 bash -c 'until pg_isready -h $POSTGRES_HOST -p $POSTGRES_PORT 2>/dev/null; do
-            echo "等待外部 PostgreSQL...";
-            sleep 2;
-        done'
-        return $?
+    # 初始化数据库目录（第一次运行）
+    if [ ! -d "$DATA_DIR" ]; then
+        echo "初始化 PostgreSQL 数据目录..."
+        mkdir -p "$DATA_DIR"
+        chown -R postgres:postgres /var/lib/postgresql
+        sudo -u postgres initdb -D "$DATA_DIR"
     fi
-    return 1
+
+    # 启动 PostgreSQL
+    echo "启动 PostgreSQL 服务..."
+    sudo -u postgres pg_ctl -D "$DATA_DIR" -l /var/lib/postgresql/logfile start
+
+    # 等待 PostgreSQL 启动
+    echo "等待 PostgreSQL 启动..."
+    until pg_isready -h localhost -p 5432 >/dev/null 2>&1; do
+        echo "PostgreSQL 尚未就绪..."
+        sleep 1
+    done
+
+    echo "本地 PostgreSQL 已启动"
 }
 
-# Main logic
-if check_external_postgresql; then
-    echo "使用外部 PostgreSQL 连接"
+# 主逻辑：始终使用本地 PostgreSQL
+echo "使用本地 PostgreSQL..."
+start_postgresql
 
-    # 设置为 init_postgresql.py 期望的值
-    export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
-    export POSTGRES_PORT=${POSTGRES_PORT:-5432}
-    export POSTGRES_USER=alpha_user
-    export POSTGRES_PASSWORD=alpha_pass
-    export POSTGRES_DB=alpha_arena
-    export POSTGRES_SNAPSHOT_DB=alpha_snapshots
-    export PG_ADMIN_USER=postgres
-    export PG_ADMIN_PASSWORD=postgres
-else
-    echo "外部 PostgreSQL 不可用，启动本地 PostgreSQL..."
-    start_postgresql
+# 设置环境变量
+export POSTGRES_HOST=localhost
+export POSTGRES_PORT=5432
+export POSTGRES_USER=alpha_user
+export POSTGRES_PASSWORD=alpha_pass
+export POSTGRES_DB=alpha_arena
+export POSTGRES_SNAPSHOT_DB=alpha_snapshots
+export PG_ADMIN_USER=postgres
+export PG_ADMIN_PASSWORD=postgres
+export PGPASSWORD=$PG_ADMIN_PASSWORD
 
-    # 设置为 init_postgresql.py 期望的值
-    export POSTGRES_HOST=localhost
-    export POSTGRES_PORT=5432
-    export POSTGRES_USER=alpha_user
-    export POSTGRES_PASSWORD=alpha_pass
-    export POSTGRES_DB=alpha_arena
-    export POSTGRES_SNAPSHOT_DB=alpha_snapshots
-    export PG_ADMIN_USER=postgres
-    export PG_ADMIN_PASSWORD=postgres
-fi
+# 创建用户和数据库（幂等）
+echo "创建 PostgreSQL 用户和数据库..."
 
-# 导出 PostgreSQL 密码环境变量
-export PGPASSWORD=$POSTGRES_PASSWORD
+sudo -u postgres psql <<EOF2
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'alpha_user') THEN
+        CREATE USER alpha_user WITH PASSWORD 'alpha_pass';
+    END IF;
+END
+\$\$;
+
+CREATE DATABASE alpha_arena OWNER alpha_user;
+CREATE DATABASE alpha_snapshots OWNER alpha_user;
+EOF2
 
 echo "PostgreSQL 配置:"
 echo "  主机: $POSTGRES_HOST:$POSTGRES_PORT"
@@ -114,7 +127,7 @@ EOF
 CMD ["sh", "-c", "\
     mkdir -p /app/data && \
     \
-    # 运行 PostgreSQL 检查脚本 \
+    # 启动 PostgreSQL \
     . /app/check_postgres.sh && \
     \
     # 生成加密密钥 \
