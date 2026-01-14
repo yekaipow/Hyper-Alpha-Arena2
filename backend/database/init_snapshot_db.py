@@ -1,9 +1,10 @@
 """
 Initialize snapshot database tables
 """
+print("\n开始处理 init_snapshot_db.py 文件\n")
 from database.snapshot_connection import snapshot_engine
 from database.snapshot_models import SnapshotBase
-print("\n开始处理 init_snapshot_db.py 文件\n")
+
 def init_snapshot_database():
     """Create all snapshot database tables"""
     SnapshotBase.metadata.create_all(bind=snapshot_engine)
