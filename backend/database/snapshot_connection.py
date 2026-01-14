@@ -10,9 +10,8 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
-
 # Snapshot database URL from environment or default
-SNAPSHOT_DATABASE_URL = os.environ.get('SNAPSHOT_DATABASE_URL', "postgresql://alpha_user:alpha_pass@localhost/alpha_snapshots")
+SNAPSHOT_DATABASE_URL = os.environ.get('SNAPSHOT_DATABASE_URL')
 
 # Reuse the same pool tuning knobs as the primary database
 POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "20"))

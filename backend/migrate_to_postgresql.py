@@ -9,9 +9,9 @@ from sqlalchemy.orm import sessionmaker
 # SQLite connection
 sqlite_conn = sqlite3.connect('data.db')
 sqlite_conn.row_factory = sqlite3.Row
-
+DATABASE_URL = os.environ.get('DATABASE_URL')
 # PostgreSQL connection
-pg_engine = create_engine("postgresql://alpha_user:alpha_pass@localhost/alpha_arena")
+pg_engine = create_engine(DATABASE_URL)
 PgSession = sessionmaker(bind=pg_engine)
 
 def migrate_table(table_name, columns):

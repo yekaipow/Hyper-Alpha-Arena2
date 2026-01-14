@@ -4,7 +4,7 @@ import os
 
 # Prefer explicit env override; default to service name for containerized deployment
 # Default to docker-compose service name; override via env when needed
-DATABASE_URL = os.environ.get('DATABASE_URL', "postgresql://alpha_user:alpha_pass@postgres:5432/alpha_arena")
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Allow tuning via environment variables but provide sensible defaults for our workload
 POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "20"))

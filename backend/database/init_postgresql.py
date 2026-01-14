@@ -20,7 +20,7 @@ DB_HOST = "localhost"
 MAIN_DB_NAME = "alpha_arena"
 SNAPSHOT_DB_NAME = "alpha_snapshots"
 
-
+DATABASE_URL = os.environ.get('DATABASE_URL')
 def try_connect_postgres():
     """Try to connect to PostgreSQL with different authentication methods"""
     # Get password from environment if provided
@@ -29,12 +29,12 @@ def try_connect_postgres():
     # Try different connection strings in order
     connection_attempts = [
         ("no password (trust mode)", f"postgresql://postgres@{DB_HOST}/postgres"),
-        ("default password", f"postgresql://postgres:postgres@{DB_HOST}/postgres"),
+        ("default password",DATABASE_URL),
     ]
 
     # Add environment password if provided
     if env_password:
-        connection_attempts.insert(0, ("environment password", f"postgresql://postgres:{env_password}@{DB_HOST}/postgres"))
+        connection_attempts.insert(0, ("environment password", DATABASE_URL))
 
     for method, conn_string in connection_attempts:
         try:
