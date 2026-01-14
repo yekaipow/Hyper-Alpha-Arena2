@@ -11,7 +11,7 @@ Usage:
 """
 import sys
 import os
-logger.info("\n开始处理 *migrate_add_hyperliquid.py 文件\n")
+print("\n开始处理 *migrate_add_hyperliquid.py 文件\n")
 # Add parent directory to path so we can import from backend
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

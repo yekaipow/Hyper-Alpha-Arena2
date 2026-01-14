@@ -8,12 +8,12 @@
     n=$((n + 1))
     # 3. 执行 Git 操作
     git add .
-    sleep 2
     # 使用格式化后的编号提交
     if git commit -m "修复bug#$n"; then
         # 只有 commit 成功才更新编号文件
         echo $n > "$counter_file"
         
+        sleep 2
         # 4. 强制推送
         git push -f origin main
     else

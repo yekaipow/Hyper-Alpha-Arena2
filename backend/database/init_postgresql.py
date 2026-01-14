@@ -10,7 +10,7 @@ import os
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
-logger.info("\n开始处理 init_postgresql.py 文件\n")
+print("\n开始处理 init_postgresql.py 文件\n")
 
 
 

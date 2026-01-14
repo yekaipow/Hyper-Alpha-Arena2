@@ -17,7 +17,7 @@ import os
 import json
 import shutil
 from datetime import datetime
-
+print("\n开始处理 upgrade_for_hyperliquid.py 文件\n")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy.orm import Session
